@@ -1,0 +1,146 @@
+{
+  "metadata": {
+    "spec-version": "1.5"
+  },
+  "display-name": "Microsoft Azure Blob Store Sink",
+  "configuration-groups": [
+    {
+      "label": "Azure Blob Store Sink Configuration",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Reference Name",
+          "name": "referenceName"
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Path",
+          "name": "path"
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Account",
+          "name": "account"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Authentication Method",
+          "name": "authenticationMethod",
+          "widget-attributes": {
+            "layout": "inline",
+            "default": "storageAccountKey",
+            "options": [
+              {
+                "id": "storageAccountKey",
+                "label": "Storage Account Key"
+              },
+              {
+                "id": "sasToken",
+                "label": "SAS Token"
+              }
+            ]
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Azure Blob Store Storage Key",
+          "name": "storageKey"
+        },
+        {
+          "widget-type": "textbox",
+          "label": "SAS Token",
+          "name": "sasToken"
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Container",
+          "name": "container"
+        }
+      ]
+    },
+    {
+      "label": "Advanced Properties",
+      "properties": [
+        {
+          "widget-type": "json-editor",
+          "label": "File System Properties",
+          "name": "fileSystemProperties"
+        },
+        {
+          "widget-type": "select",
+          "label": "File Output Format",
+          "name": "outputFormat",
+          "widget-attributes": {
+            "values": [
+              "text",
+              "avro",
+              "orc"
+            ],
+            "default": "text"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Field Delimiter (only when output format is text)",
+          "name": "fieldDelimiter"
+        }
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "schema",
+      "widget-type": "schema",
+      "widget-attributes": {
+        "default-schema": {
+          "name": "fileRecord",
+          "type": "record",
+          "fields": [
+            {
+              "name": "offset",
+              "type": "long"
+            },
+            {
+              "name": "body",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "jump-config": {
+    "datasets": [
+      {
+        "ref-property-name": "referenceName"
+      }
+    ]
+  },
+  "filters": [
+    {
+      "name": "StorageAccountAuthentication",
+      "condition": {
+        "expression": "authenticationMethod == 'storageAccountKey'"
+      },
+      "show": [
+        {
+          "name": "storageKey"
+        }
+      ]
+    },
+    {
+      "name": "SASAuthentication",
+      "condition": {
+        "expression": "authenticationMethod == 'sasToken'"
+      },
+      "show": [
+        {
+          "name": "sasToken"
+        },
+        {
+          "name": "container"
+        }
+      ]
+    }
+  ]
+}
