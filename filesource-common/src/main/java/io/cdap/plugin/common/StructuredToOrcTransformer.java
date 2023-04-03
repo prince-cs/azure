@@ -20,7 +20,14 @@ import io.cdap.cdap.api.common.Bytes;
 import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;
 import io.cdap.cdap.api.data.schema.UnsupportedTypeException;
-import org.apache.hadoop.io.*;
+import org.apache.hadoop.io.BooleanWritable;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.FloatWritable;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.WritableComparable;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.mapred.OrcStruct;
 import org.slf4j.Logger;
@@ -116,7 +123,7 @@ public class StructuredToOrcTransformer extends AbstractStructuredRecordTransfor
         }
       default:
         throw new UnsupportedTypeException(String.format("%s type is currently not supported in ORC",
-                                                         field.getSchema().getType().name()));
+          field.getSchema().getType().name()));
     }
   }
 

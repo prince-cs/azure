@@ -18,7 +18,6 @@ package io.cdap.plugin.common;
 
 import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;
-import io.cdap.plugin.common.RecordConverter;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
