@@ -14,7 +14,7 @@
  * the License.
  */
 
-package io.cdap.plugin.sink;
+package io.cdap.plugin.common;
 
 import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;

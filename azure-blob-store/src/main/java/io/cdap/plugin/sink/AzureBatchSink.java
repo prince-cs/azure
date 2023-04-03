@@ -27,28 +27,25 @@ import io.cdap.cdap.api.data.batch.Output;
 import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;
 import io.cdap.cdap.api.dataset.lib.KeyValue;
+import io.cdap.cdap.api.plugin.InvalidPluginConfigException;
+import io.cdap.cdap.api.plugin.InvalidPluginProperty;
 import io.cdap.cdap.etl.api.Emitter;
 import io.cdap.cdap.etl.api.FailureCollector;
 import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.batch.BatchRuntimeContext;
 import io.cdap.cdap.etl.api.batch.BatchSink;
 import io.cdap.cdap.etl.api.batch.BatchSinkContext;
-import io.cdap.cdap.etl.api.batch.BatchSourceContext;
-import io.cdap.plugin.common.HiveSchemaConverter;
-import io.cdap.plugin.common.LineageRecorder;
-import io.cdap.plugin.common.ReferenceBatchSink;
-import io.cdap.plugin.common.ReferencePluginConfig;
+import io.cdap.cdap.etl.api.validation.FormatContext;
+import io.cdap.cdap.etl.api.validation.ValidatingOutputFormat;
+import io.cdap.plugin.common.*;
 import io.cdap.plugin.common.batch.JobUtils;
 import io.cdap.plugin.common.batch.sink.SinkOutputFormatProvider;
-import org.apache.avro.mapred.AvroKey;
 import org.apache.avro.mapreduce.AvroJob;
-import org.apache.avro.mapreduce.AvroKeyOutputFormat;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
-import org.apache.orc.mapreduce.OrcOutputFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,7 +53,9 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Plugin(type = BatchSink.PLUGIN_TYPE)
@@ -85,12 +84,25 @@ public class AzureBatchSink extends ReferenceBatchSink<StructuredRecord, Object,
     super.configurePipeline(pipelineConfigurer);
     config.validate(pipelineConfigurer.getStageConfigurer().getInputSchema(),
       pipelineConfigurer.getStageConfigurer().getFailureCollector());
+    if (!TEXT.equals(config.outputFormat)) {
+      ValidatingOutputFormat validatingOutputFormat = getValidatingOutputFormat(pipelineConfigurer);
+      FormatContext formatContext = new FormatContext(pipelineConfigurer.getStageConfigurer().getFailureCollector(),
+        pipelineConfigurer.getStageConfigurer().getInputSchema());
+      validateOutputFormatProvider(formatContext, config.outputFormat, validatingOutputFormat);
+    }
   }
 
   @Override
   public void prepareRun(BatchSinkContext context) throws Exception {
     FailureCollector collector = context.getFailureCollector();
     config.validate(collector);
+    String outputFormatClassName = null;
+    if (!TEXT.equals(config.outputFormat)) {
+      ValidatingOutputFormat validatingOutputFormat = getOutputFormatForRun(context);
+      FormatContext formatContext = new FormatContext(collector, context.getInputSchema());
+      validateOutputFormatProvider(formatContext, config.outputFormat, validatingOutputFormat);
+      outputFormatClassName = validatingOutputFormat.getOutputFormatClassName();
+    }
     collector.getOrThrowException();
 
     Job job = JobUtils.createInstance();
@@ -107,13 +119,13 @@ public class AzureBatchSink extends ReferenceBatchSink<StructuredRecord, Object,
       org.apache.avro.Schema avroSchema = new org.apache.avro.Schema.Parser().parse(config.getSchema().toString());
       AvroJob.setOutputKeySchema(job, avroSchema);
       context.addOutput(Output.of(config.referenceName,
-        new SinkOutputFormatProvider(AvroKeyOutputFormat.class.getName(), conf)));
+        new SinkOutputFormatProvider(outputFormatClassName, conf)));
     } else if (ORC.equals(config.outputFormat)) {
       StringBuilder builder = new StringBuilder();
       HiveSchemaConverter.appendType(builder, config.getSchema());
       conf.set("orc.mapred.output.schema", builder.toString());
       context.addOutput(Output.of(config.referenceName,
-        new SinkOutputFormatProvider(OrcOutputFormat.class.getName(), conf)));
+        new SinkOutputFormatProvider(outputFormatClassName, conf)));
     } else {
       context.addOutput(Output.of(config.referenceName,
         new SinkOutputFormatProvider(TextOutputFormat.class.getName(), conf)));
@@ -132,6 +144,40 @@ public class AzureBatchSink extends ReferenceBatchSink<StructuredRecord, Object,
     }
   }
 
+  protected ValidatingOutputFormat getValidatingOutputFormat(PipelineConfigurer pipelineConfigurer) {
+    return pipelineConfigurer.usePlugin(ValidatingOutputFormat.PLUGIN_TYPE, config.outputFormat,
+      config.outputFormat, config.getRawProperties());
+  }
+
+  private void validateOutputFormatProvider(FormatContext context, String format,
+                                            @Nullable ValidatingOutputFormat validatingOutputFormat) {
+    FailureCollector collector = context.getFailureCollector();
+    if (validatingOutputFormat == null) {
+      collector.addFailure(
+          String.format("Could not find the '%s' output format plugin.", format), null)
+        .withPluginNotFound(format, format, ValidatingOutputFormat.PLUGIN_TYPE);
+    } else {
+      validatingOutputFormat.validate(context);
+    }
+  }
+
+  protected ValidatingOutputFormat getOutputFormatForRun(BatchSinkContext context) throws InstantiationException {
+    String fileFormat = config.outputFormat;
+    try {
+      return context.newPluginInstance(fileFormat);
+    } catch (InvalidPluginConfigException e) {
+      Set<String> properties = new HashSet<>(e.getMissingProperties());
+      for (InvalidPluginProperty invalidProperty : e.getInvalidProperties()) {
+        properties.add(invalidProperty.getName());
+      }
+      String errorMessage = String.format("Format '%s' cannot be used because properties %s were not provided or " +
+          "were invalid when the pipeline was deployed. Set the format to a " +
+          "different value, or re-create the pipeline with all required properties.",
+        fileFormat, properties);
+      throw new IllegalArgumentException(errorMessage, e);
+    }
+  }
+
   @Override
   public void initialize(BatchRuntimeContext context) throws Exception {
     if (AVRO.equals(config.outputFormat)) {
@@ -147,13 +193,10 @@ public class AzureBatchSink extends ReferenceBatchSink<StructuredRecord, Object,
   @Override
   public void transform(StructuredRecord input, Emitter<KeyValue<Object, Object>> emitter)
     throws Exception {
-    if (AVRO.equals(config.outputFormat)) {
-      emitter.emit(new KeyValue<>((Object) new AvroKey<>(avroTransformer.transform(input)),
-        (Object) NullWritable.get()));
-    } else if (ORC.equals(config.outputFormat)) {
-      emitter.emit(new KeyValue<>((Object) NullWritable.get(), (Object) orcTransformer.transform(input)));
-    } else {
+    if (TEXT.equals(config.outputFormat)) {
       emitter.emit(new KeyValue<>((Object) textTransformer.transform(input), (Object) NullWritable.get()));
+    } else {
+      emitter.emit(new KeyValue<>(NullWritable.get(), input));
     }
   }
 

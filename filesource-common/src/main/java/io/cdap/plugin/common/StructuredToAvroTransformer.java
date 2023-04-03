@@ -14,10 +14,10 @@
  * the License.
  */
 
-package io.cdap.plugin.sink;
+package io.cdap.plugin.common;
 
-import io.cdap.cdap.api.data.format.StructuredRecord;
 import com.google.common.collect.Maps;
+import io.cdap.cdap.api.data.format.StructuredRecord;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.GenericRecordBuilder;

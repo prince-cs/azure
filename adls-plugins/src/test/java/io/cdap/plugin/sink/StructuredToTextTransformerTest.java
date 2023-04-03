@@ -20,6 +20,7 @@ import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.format.UnexpectedFormatException;
 import io.cdap.cdap.api.data.schema.Schema;
 import com.google.common.collect.ImmutableMap;
+import io.cdap.plugin.common.StructuredToTextTransformer;
 import org.junit.Assert;
 import org.junit.Test;
 
